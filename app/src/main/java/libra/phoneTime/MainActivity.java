@@ -19,6 +19,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -30,6 +31,7 @@ import libra.phoneTime.view.MainListAdapter;
 import libra.phoneTime.view.SummaryView;
 
 public class MainActivity extends AppCompatActivity {
+    private final String TAG = this.getClass().getSimpleName();
     private static final int DEF_TIMER_PERIOD_MS = 1000;
     private SummaryView mSummaryView;
     private Timer mTimer;
@@ -49,8 +51,10 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 try {
                     long secs = Database.getSeconds();
-                    mSummaryView.setText(String.valueOf(secs));
+                    mSummaryView.setValue(secs);
+                    mSummaryView.setDataList(Database.getList());
                 } catch (Exception e) {
+                    Log.w(TAG, "Database doesn't work");
                 }
             }
         };

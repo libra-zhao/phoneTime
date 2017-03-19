@@ -41,6 +41,10 @@ public class ScreenEvent extends Object {
         mCalendar.setTimeInMillis(ms);
     }
 
+    public Calendar getCalendar() {
+        return mCalendar;
+    }
+
     public boolean isDayOf(Calendar calendar) {
         if (mCalendar.get(Calendar.YEAR) == calendar.get(Calendar.YEAR) &&
                 mCalendar.get(Calendar.MONTH) == calendar.get(Calendar.MONTH) &&

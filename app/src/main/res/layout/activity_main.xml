@@ -14,7 +14,8 @@
     <libra.phoneTime.view.SummaryView
         android:id="@+id/summary"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/summary_height" />
+        android:layout_height="@dimen/summary_height"
+        android:gravity="center"/>
 
     <ListView
         android:id="@+id/list"

@@ -18,8 +18,6 @@ package libra.phoneTime.db;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.os.Environment;
-import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -27,8 +25,10 @@ import java.util.Date;
 import java.io.File;
 
 import libra.phoneTime.exception.NonSetupException;
+import libra.phoneTime.lib.ZeroTime;
 
 public class Database extends Object {
+
     private static final String DB_NAME = "main.db";
     private static final String DB_TABLE = "main";
     private static final String DB_TABLE_SETTING = "setting";
@@ -40,14 +40,13 @@ public class Database extends Object {
     private static final String DB_COL_VALUE = "value";
     private static final String SETTING_KEY_INSTALL_DATE = "install_date";
     private static Database mInstance;
-    private final String TAG = this.getClass().getSimpleName();
     private final Object mDatabaseSync;
     private SQLiteDatabase mDatabase;
     private ArrayList<ScreenEvent> mDataCache;
 
     private Database(Context context) {
         mDatabaseSync = new Object();
-        _init_db(context);
+        _initDB(context);
     }
 
     public static Database getInstance() throws NonSetupException {
@@ -79,84 +78,96 @@ public class Database extends Object {
         screenOnOff(ScreenEvent.SCREEN_OFF, ScreenEvent.MASK_POWEROFF);
     }
 
-    public static void screenOnOff(int screen, long mask) {
+    private static void screenOnOff(int screen, long mask) {
         try {
-            Database database = getInstance();
-            database._add_db(screen, System.currentTimeMillis(), mask);
+            Database db = getInstance();
+            db._addDB(screen, System.currentTimeMillis(), mask);
         } catch (NonSetupException e) {
             e.printStackTrace();
         }
+    }
+
+    public static ArrayList<ScreenOn> getList() throws NonSetupException {
+        return getList(Calendar.getInstance());
+    }
+
+    public static ArrayList<ScreenOn> getList(Calendar calendar) throws NonSetupException {
+        Database db = getInstance();
+        return db._readScreenOns(calendar);
     }
 
     public static long getSeconds() throws NonSetupException {
         return getSeconds(Calendar.getInstance());
     }
 
-    public static long getSeconds(Calendar calendar) throws NonSetupException{
-        Database database = getInstance();
-        return _getSeconds(database._readList(calendar));
+    public static long getSeconds(Calendar calendar) throws NonSetupException {
+        Database db = getInstance();
+        ArrayList<ScreenOn> list = db._readScreenOns(calendar);
+        long result = 0;
+
+        for (ScreenOn so : list) {
+            result += so.getTimeSecs();
+        }
+
+        return result;
     }
 
     public static int getDayCount() throws NonSetupException {
-        Database database = getInstance();
-        long installDate = database._readSettingLong(SETTING_KEY_INSTALL_DATE);
+        Database db = getInstance();
+        long installDate = db._readSettingLong(SETTING_KEY_INSTALL_DATE);
         Calendar iDay = Calendar.getInstance();
         iDay.setTimeInMillis(installDate);
         Calendar today = Calendar.getInstance();
         long ms = today.getTimeInMillis() - installDate;
-        int day = (int)(ms / (1000 * 3600 * 24)) + 1;
+        int day = (int) (ms / (1000 * 3600 * 24)) + 1;
         if (_getMsOfDay(today) < _getMsOfDay(iDay)) {
             day++;
         }
         return day;
     }
 
-    private long _readSettingLong(String key) {
-        String value = _readSetting(key);
-        return Long.decode(value);
-    }
+    private ArrayList<ScreenOn> _readScreenOns(Calendar calendar) {
+        ArrayList<ScreenEvent> events = _readEvents(calendar);
+        ArrayList<ScreenOn> result = new ArrayList<>();
+        Calendar lastOn = null;
 
-    private String _readSetting(String key) {
-        synchronized (mDatabaseSync) {
-            String exec = "SELECT " + DB_COL_VALUE + " from " + DB_TABLE_SETTING + " where "
-                    + DB_COL_KEY + " = \"" + key + "\"";
-            Cursor c = mDatabase.rawQuery(exec, null);
-            c.moveToFirst();
-            return c.getString(c.getColumnIndex(DB_COL_VALUE));
-        }
-    }
-
-    private static long _getSeconds(ArrayList<ScreenEvent> list) {
-        long lastOn = -1;
-        long result = 0;
-
-        if (list.isEmpty()) {
-            return 0;
+        if (events.isEmpty()) {
+            return result;
         }
 
-        if (list.get(0).screen == ScreenEvent.SCREEN_OFF) {
+        if (events.get(0).screen == ScreenEvent.SCREEN_OFF) {
             // over night
-            lastOn = new Date().getTime();
+            lastOn = ZeroTime.init(Calendar.getInstance());
         }
 
-        for (ScreenEvent event : list) {
+        for (ScreenEvent event : events) {
             if (event.screen == ScreenEvent.SCREEN_OFF) {
-                if (lastOn != -1) {
-                    result += event.ms - lastOn;
+                if (lastOn != null) {
+                    result.add(new ScreenOn(lastOn, event.getCalendar()));
+                    lastOn = null;
                 }
             } else {
-                lastOn = event.ms;
+                lastOn = event.getCalendar();
+            }
+        }
+
+        if (lastOn != null) {
+            if (_isToday(calendar)) {
+                result.add(new ScreenOn(lastOn, Calendar.getInstance()));
+            }
+            else {
+                result.add(new ScreenOn(lastOn, _getEndTimeOfDay(lastOn)));
             }
         }
 
         return result;
     }
 
-    private ArrayList<ScreenEvent> _readList(Calendar calendar) {
+    private ArrayList<ScreenEvent> _readEvents(Calendar calendar) {
         ArrayList<ScreenEvent> list;
         ArrayList<ScreenEvent> result = new ArrayList<>();
 
-        list = _read_db();
+        list = _readDB();
         for (ScreenEvent screenEvent : list) {
             if (screenEvent.isDayOf(calendar)) {
                 result.add(screenEvent);
@@ -166,16 +177,46 @@ public class Database extends Object {
         return result;
     }
 
-    private void _init_db(Context context) {
-        String exec, dbFilePath;
-        File dbFile;
+    private long _readSettingLong(String key) {
+        String value = _readSetting(key);
+        return Long.decode(value);
+    }
 
-        dbFilePath = context.getExternalFilesDir(null).getAbsolutePath() + File.separator+ DB_NAME;
-        dbFile = new File(dbFilePath);
-        if (dbFile.exists()) {
+    private String _readSetting(String key) {
+        String result;
+        synchronized (mDatabaseSync) {
+            String exec = "SELECT " + DB_COL_VALUE + " from " + DB_TABLE_SETTING + " where "
+                    + DB_COL_KEY + " = \"" + key + "\"";
+            Cursor c = mDatabase.rawQuery(exec, null);
+            c.moveToFirst();
+            result = c.getString(c.getColumnIndex(DB_COL_VALUE));
+            c.close();
+        }
+        return result;
+    }
+
+    private void _initDB(Context context) {
+        String exec, dbFilePath;
+        File dbFile, dbFolder;
+        boolean createTable = false;
+
+        dbFolder = context.getExternalFilesDir(null);
+        if (dbFolder != null && dbFolder.exists()) {
+            dbFilePath = dbFolder.getAbsolutePath() + File.separator + DB_NAME;
+            dbFile = new File(dbFilePath);
+            if (!dbFile.exists()) {
+                createTable = true;
+            }
             mDatabase = SQLiteDatabase.openOrCreateDatabase(dbFilePath, null);
         } else {
-            mDatabase = SQLiteDatabase.openOrCreateDatabase(dbFilePath, null);
+            // getExternalFilesDir() doesn't work at some phones and some times.
+            if (context.getDatabasePath(DB_NAME) == null) {
+                createTable = true;
+            }
+            mDatabase = context.openOrCreateDatabase(DB_NAME, Context.MODE_PRIVATE, null);
+        }
+
+        if (createTable) {
             exec = "CREATE TABLE " + DB_TABLE + "(" + DB_COL_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, ";
             exec += DB_COL_SCREEN + " INTEGER, ";
             exec += DB_COL_MS + " INTEGER, ";
@@ -192,7 +233,7 @@ public class Database extends Object {
         }
     }
 
-    private void _add_db(int screen, long ms, long mask) {
+    private void _addDB(int screen, long ms, long mask) {
         synchronized (mDatabaseSync) {
             mDatabase.execSQL("INSERT INTO " + DB_TABLE + " VALUES (NULL, ?, ?, ?)",
                     new Object[]{screen, ms, mask});
@@ -200,7 +241,7 @@ public class Database extends Object {
         }
     }
 
-    private ArrayList<ScreenEvent> _read_db() {
+    private ArrayList<ScreenEvent> _readDB() {
         synchronized (mDatabaseSync) {
             if (mDataCache != null) {
                 return mDataCache;
@@ -227,5 +268,26 @@ public class Database extends Object {
         ms = ms * 60 + calendar.get(Calendar.SECOND);
         ms = ms * 1000 + calendar.get(Calendar.MILLISECOND);
         return ms;
+    }
+
+    private static boolean _isToday(Calendar calendar) {
+        Calendar now = Calendar.getInstance();
+        if (calendar.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                calendar.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                calendar.get(Calendar.YEAR) == now.get(Calendar.YEAR)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private static Calendar _getEndTimeOfDay(Calendar calendar) {
+        Calendar result = Calendar.getInstance();
+        result.setTimeInMillis(calendar.getTimeInMillis());
+        result.set(Calendar.HOUR, 23);
+        result.set(Calendar.MINUTE, 59);
+        result.set(Calendar.SECOND, 59);
+        result.set(Calendar.MILLISECOND, 999);
+        return result;
     }
 }

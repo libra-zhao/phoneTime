@@ -13,17 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package libra.phoneTime.view;
+package libra.phoneTime.db;
 
-import android.content.Context;
-import android.util.AttributeSet;
-import android.view.View;
+import java.util.Calendar;
 
-public class ProgressView extends View {
-    public ProgressView(Context context, AttributeSet attrs) {
-        this(context, attrs, 0);
+public class ScreenOn {
+    public Calendar mStartTime;
+    public Calendar mEndTime;
+
+    public ScreenOn(Calendar startTime, Calendar endTime) {
+        mStartTime = startTime;
+        mEndTime = endTime;
     }
-    public ProgressView(Context context, AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
+
+    public Calendar getStartTime() {
+        return mStartTime;
+    }
+
+    public Calendar getEndTime() {
+        return mEndTime;
+    }
+
+    public long getTimeSecs() {
+        return (mEndTime.getTimeInMillis() - mStartTime.getTimeInMillis()) / 1000;
     }
 }
