@@ -9,6 +9,9 @@ import android.view.View;
  */
 
 public class ProgressView extends View {
+    public ProgressView(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
     public ProgressView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
     }

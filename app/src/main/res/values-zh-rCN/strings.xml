@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">方寸时间</string>
+    <string name="warn_service_startup">程序需要自启动权限</string>
+</resources>

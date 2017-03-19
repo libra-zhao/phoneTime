@@ -8,7 +8,11 @@ import android.view.ViewGroup;
 import android.widget.ListAdapter;
 import android.widget.TextView;
 
+import java.util.Calendar;
+
 import libra.phoneTime.R;
+import libra.phoneTime.db.Database;
+import libra.phoneTime.exception.NonSetupException;
 
 /**
  * Created by Libra Zhao on 2017/3/4.
@@ -22,12 +26,11 @@ public class MainListAdapter implements ListAdapter {
     }
 
     public int getCount() {
-//        try {
-//            return Database.getDayCount();
-//        } catch (NonSetupException e) {
-//            return 1;
-//        }
-        return 1;
+        try {
+            return Database.getDayCount();
+        } catch (NonSetupException e) {
+            return 1;
+        }
     }
 
     public View getView(int position, View convertView, ViewGroup parent) {
@@ -39,9 +42,16 @@ public class MainListAdapter implements ListAdapter {
         }
 
         text = (TextView)convertView.findViewById(R.id.text);
-       // progress = (ProgressView) convertView.findViewById(R.id.progress);
+        progress = (ProgressView) convertView.findViewById(R.id.progress);
 
-        text.setText("dddddd");
+        try {
+            Calendar calendar = Calendar.getInstance();
+            calendar.add(Calendar.DAY_OF_MONTH, -position);
+            text.setText(String.valueOf(Database.getSeconds(calendar)));
+        } catch (Exception e) {
+            e.printStackTrace();
+            text.setText("");
+        }
 
         return convertView;
     }

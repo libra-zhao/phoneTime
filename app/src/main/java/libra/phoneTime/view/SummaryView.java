@@ -10,6 +10,9 @@ import android.widget.TextView;
  */
 
 public class SummaryView extends TextView {
+    public SummaryView(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
     public  SummaryView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
     }

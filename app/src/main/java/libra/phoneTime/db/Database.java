@@ -1,16 +1,30 @@
-package libra.phoneTime.db;
-
-/**
- * Created by Libra Zhao on 2017/2/20.
+/*
+ * Copyright (C) 2017 by Libra Zhao <libra.zhao@foxmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+package libra.phoneTime.db;
 
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.os.Environment;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.io.File;
 
 import libra.phoneTime.exception.NonSetupException;
 
@@ -18,7 +32,7 @@ public class Database extends Object {
     private static final String DB_NAME = "main.db";
     private static final String DB_TABLE = "main";
     private static final String DB_TABLE_SETTING = "setting";
-    private static final String DB_COL_INDEX = "index";
+    private static final String DB_COL_ID = "id";
     private static final String DB_COL_SCREEN = "screen";
     private static final String DB_COL_MS = "ms";
     private static final String DB_COL_MASK = "mask";
@@ -75,14 +89,44 @@ public class Database extends Object {
     }
 
     public static long getSeconds() throws NonSetupException {
-        Database database = getInstance();
-        int year = Calendar.getInstance().get(Calendar.YEAR);
-        int month = Calendar.getInstance().get(Calendar.MONTH);
-        int day = Calendar.getInstance().get(Calendar.DAY_OF_MONTH);
-        return getSeconds(database._readList(year, month, day));
+        return getSeconds(Calendar.getInstance());
     }
 
-    public static long getSeconds(ArrayList<ScreenEvent> list) {
+    public static long getSeconds(Calendar calendar) throws NonSetupException{
+        Database database = getInstance();
+        return _getSeconds(database._readList(calendar));
+    }
+
+    public static int getDayCount() throws NonSetupException {
+        Database database = getInstance();
+        long installDate = database._readSettingLong(SETTING_KEY_INSTALL_DATE);
+        Calendar iDay = Calendar.getInstance();
+        iDay.setTimeInMillis(installDate);
+        Calendar today = Calendar.getInstance();
+        long ms = today.getTimeInMillis() - installDate;
+        int day = (int)(ms / (1000 * 3600 * 24)) + 1;
+        if (_getMsOfDay(today) < _getMsOfDay(iDay)) {
+            day++;
+        }
+        return day;
+    }
+
+    private long _readSettingLong(String key) {
+        String value = _readSetting(key);
+        return Long.decode(value);
+    }
+
+    private String _readSetting(String key) {
+        synchronized (mDatabaseSync) {
+            String exec = "SELECT " + DB_COL_VALUE + " from " + DB_TABLE_SETTING + " where "
+                    + DB_COL_KEY + " = \"" + key + "\"";
+            Cursor c = mDatabase.rawQuery(exec, null);
+            c.moveToFirst();
+            return c.getString(c.getColumnIndex(DB_COL_VALUE));
+        }
+    }
+
+    private static long _getSeconds(ArrayList<ScreenEvent> list) {
         long lastOn = -1;
         long result = 0;
 
@@ -108,42 +152,13 @@ public class Database extends Object {
         return result;
     }
 
-    public static int getDayCount() throws NonSetupException {
-        Database database = getInstance();
-        long installDate = database._readSettingLong(SETTING_KEY_INSTALL_DATE);
-        Calendar iDay = Calendar.getInstance();
-        iDay.setTimeInMillis(installDate);
-        Calendar today = Calendar.getInstance();
-        long ms = today.getTimeInMillis() - installDate;
-        int day = (int)(ms / (1000 * 3600 * 24)) + 1;
-        if (_getMsOfDay(today) < _getMsOfDay(iDay)) {
-            day++;
-        }
-        return day;
-    }
-
-    private long _readSettingLong(String key) {
-        String value = _readSetting(key);
-        return Long.decode(value);
-    }
-
-    private String _readSetting(String key) {
-        synchronized (mDatabaseSync) {
-            String exec = "SELECT " + DB_COL_VALUE + " from " + DB_TABLE_SETTING + " where "
-                    + DB_COL_KEY + " = " + key;
-            Cursor c = mDatabase.rawQuery(exec, null);
-            c.moveToFirst();
-            return c.getString(c.getColumnIndex(DB_COL_VALUE));
-        }
-    }
-
-    private ArrayList<ScreenEvent> _readList(int year, int month, int day) {
+    private ArrayList<ScreenEvent> _readList(Calendar calendar) {
         ArrayList<ScreenEvent> list;
         ArrayList<ScreenEvent> result = new ArrayList<>();
 
         list = _read_db();
         for (ScreenEvent screenEvent : list) {
-            if (screenEvent.isDayOf(year, month, day)) {
+            if (screenEvent.isDayOf(calendar)) {
                 result.add(screenEvent);
             }
         }
@@ -152,25 +167,28 @@ public class Database extends Object {
     }
 
     private void _init_db(Context context) {
-        String exec;
+        String exec, dbFilePath;
+        File dbFile;
 
-        if (context.getDatabasePath(DB_NAME) == null) {
-            mDatabase = context.openOrCreateDatabase(DB_NAME, Context.MODE_PRIVATE, null);
-            exec = "CREATE TABLE" + DB_TABLE + "(" + DB_COL_INDEX + " INTEGER PRIMARY KEY AUTOINCREMENT, ";
+        dbFilePath = context.getExternalFilesDir(null).getAbsolutePath() + File.separator+ DB_NAME;
+        dbFile = new File(dbFilePath);
+        if (dbFile.exists()) {
+            mDatabase = SQLiteDatabase.openOrCreateDatabase(dbFilePath, null);
+        } else {
+            mDatabase = SQLiteDatabase.openOrCreateDatabase(dbFilePath, null);
+            exec = "CREATE TABLE " + DB_TABLE + "(" + DB_COL_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, ";
             exec += DB_COL_SCREEN + " INTEGER, ";
             exec += DB_COL_MS + " INTEGER, ";
             exec += DB_COL_MASK + " INTEGER)";
             mDatabase.execSQL(exec);
 
-            exec = "CREATE TABLE" + DB_TABLE_SETTING + "(" + DB_COL_INDEX + " INTEGER PRIMARY KEY AUTOINCREMENT, ";
+            exec = "CREATE TABLE " + DB_TABLE_SETTING + "(" + DB_COL_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, ";
             exec += DB_COL_KEY + " STRING, ";
             exec += DB_COL_VALUE + " STRING)";
             mDatabase.execSQL(exec);
 
             exec = "INSERT INTO " + DB_TABLE_SETTING + " VALUES (NULL, ?, ?)";
             mDatabase.execSQL(exec, new Object[]{SETTING_KEY_INSTALL_DATE, String.valueOf(new Date().getTime())});
-        } else {
-            mDatabase = context.openOrCreateDatabase(DB_NAME, Context.MODE_PRIVATE, null);
         }
     }
 

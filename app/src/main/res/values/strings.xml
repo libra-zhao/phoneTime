@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">phoneTime</string>
+    <string name="warn_service_startup">Need boot complete permission</string>
+</resources>

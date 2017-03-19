@@ -13,7 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package libra.phoneTime.exception;
+package libra.phoneTime.db;
 
-public class NonSetupException extends Exception {
+import java.util.Calendar;
+
+import libra.phoneTime.exception.NonSetupException;
+
+public class DatabaseDummy {
+    private static final int DEF_DAY_COUNT = 10;
+
+    public static int getDayCount() throws NonSetupException {
+        return DEF_DAY_COUNT;
+    }
+
+    public static long getSeconds() throws NonSetupException {
+        return 1001;
+    }
+
+    public static long getSeconds(Calendar calendar) throws NonSetupException {
+        return 1000 + calendar.get(Calendar.DAY_OF_MONTH);
+    }
 }
